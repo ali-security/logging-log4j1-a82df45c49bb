@@ -173,7 +173,7 @@
                                      CyclicBuffer, OR,
                                      LevelMatchFilter, PatternParser, 
                                      ErrorHandler,Rewrite, JNDIUtil,
-									 HardenedObjectInputStream"/>
+									 HardenedObjectInputStream, NTEventLogAppenderDllPath"/>
 
   <!-- ================================================================= -->
   <!-- Longer unit tests                                                 -->
@@ -466,6 +466,16 @@
         <formatter type="plain" usefile="false"/>
         <test name="org.apache.log4j.net.SyslogAppenderTest" />
       </junit>
+  </target>
+
+  <!-- Does not load the native DLL, so it runs on every platform -->
+  <target name="NTEventLogAppenderDllPath" depends="build">
+    <junit printsummary="yes" fork="yes"
+        haltonfailure="${haltonfailure}" dir="${basedir}">
+      <classpath refid="tests.classpath"/>
+      <formatter type="plain" usefile="false"/>
+      <test name="org.apache.log4j.nt.NTEventLogAppenderDllPathTest" />
+    </junit>
   </target>
 
   <target name="NTEventLogAppender" depends="build" if="is-windows">
