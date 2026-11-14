@@ -53,6 +53,19 @@ public class ErrorHandlerTestCase extends TestCase {
     super(name);
   }
 
+  /*
+   * Run test1 before test2, the declaration order JDK 6 reflection returned.
+   * test2's properties configuration never opens the FALLBACK file, so it
+   * reads the output/temp left by test1; JDK 7+ getMethods() order is
+   * unspecified and can run test2 first against a missing file.
+   */
+  public static junit.framework.Test suite() {
+    junit.framework.TestSuite suite = new junit.framework.TestSuite();
+    suite.addTest(new ErrorHandlerTestCase("test1"));
+    suite.addTest(new ErrorHandlerTestCase("test2"));
+    return suite;
+  }
+
   public void setUp() {
     root = Logger.getRootLogger();
     logger = Logger.getLogger("test");

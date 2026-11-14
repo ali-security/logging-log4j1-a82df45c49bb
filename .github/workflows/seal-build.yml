@@ -1,0 +1,70 @@
+# Authored for the sealed build: upstream log4j 1.2.17 has no GitHub Actions CI.
+# Mirrors the project's own Maven build (pom.xml): compile for -source/-target 1.4,
+# run the Ant regression suite (tests/build.xml "runAll") from the test phase via
+# maven-antrun-plugin, then package the bundle jar. The site is skipped as in the
+# previous sealed build; it is reporting-only and is not part of the jar.
+name: seal-build
+
+on:
+  workflow_dispatch:
+    inputs:
+      test-filter:
+        description: "Single tests/build.xml target to run instead of runAll (e.g. Core, PatternLayout); empty runs the full suite"
+        required: false
+        default: ""
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      # setup-java no longer lists Zulu 7, so fetch the last Zulu 7 build from Azul's CDN.
+      - name: Set up JDK 7
+        run: |
+          curl -fsSL https://cdn.azul.com/zulu/bin/zulu7.56.0.11-ca-jdk7.0.352-linux_x64.tar.gz -o /tmp/jdk7.tgz
+          tar -xzf /tmp/jdk7.tgz -C "$RUNNER_TEMP"
+          echo "JAVA_HOME=$RUNNER_TEMP/zulu7.56.0.11-ca-jdk7.0.352-linux_x64" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/zulu7.56.0.11-ca-jdk7.0.352-linux_x64/bin" >> "$GITHUB_PATH"
+
+      - name: Install Maven 3.6.3
+        run: |
+          curl -fsSL https://archive.apache.org/dist/maven/maven-3/3.6.3/binaries/apache-maven-3.6.3-bin.tar.gz -o /tmp/maven.tgz
+          tar -xzf /tmp/maven.tgz -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/apache-maven-3.6.3/bin" >> "$GITHUB_PATH"
+
+      - name: Build and test
+        run: |
+          set -o pipefail
+          java -version
+          mvn -version
+          if [ -n "${{ inputs.test-filter }}" ]; then
+            mvn -B -e clean verify -Dmaven.site.skip=true -Dhttps.protocols=TLSv1.2 -Dlog4j.tests.target=${{ inputs.test-filter }} 2>&1 | tee "$RUNNER_TEMP/build.log"
+          else
+            mvn -B -e clean verify -Dmaven.site.skip=true -Dhttps.protocols=TLSv1.2 2>&1 | tee "$RUNNER_TEMP/build.log"
+          fi
+
+      - name: Test summary
+        run: |
+          # Ant prints each suite's "Tests run:" line twice (printsummary + plain
+          # formatter); count only the one that follows the formatter's "Testsuite:" header.
+          awk '/\[junit\] Testsuite:/ { name = $NF; armed = 1; next }
+               armed && /\[junit\] Tests run:/ {
+                 armed = 0
+                 print "SUITE " name ": " $0
+                 for (i = 1; i <= NF; i++) {
+                   if ($i == "run:") { gsub(",", "", $(i+1)); run += $(i+1) }
+                   if ($i == "Failures:") { gsub(",", "", $(i+1)); fail += $(i+1) }
+                   if ($i == "Errors:") { gsub(",", "", $(i+1)); err += $(i+1) }
+                 }
+                 suites++
+               }
+               END { printf "TOTAL: %d test suites, %d tests run, %d failures, %d errors, %d passed\n", suites, run, fail, err, run - fail - err }' "$RUNNER_TEMP/build.log"
+
+      - name: Upload jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: log4j-jar
+          path: target/log4j-1.2.17.jar
+          if-no-files-found: error
